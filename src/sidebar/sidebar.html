@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reverse Prompt Generator</title>
+  <link rel="stylesheet" href="sidebar.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>Reverse Prompt</h1>
+      <button id="settingsBtn" class="icon-btn" title="Settings">⚙️</button>
+    </header>
+
+    <!-- Settings Panel -->
+    <div id="settingsPanel" class="settings-panel hidden">
+      <div class="settings-section">
+        <label for="apiKeyInput">Doubao API Key</label>
+        <input type="password" id="apiKeyInput" placeholder="Enter your API key...">
+        <button id="saveApiKeyBtn" class="btn btn-primary">Save API Key</button>
+      </div>
+      <div class="settings-section">
+        <button id="clearHistoryBtn" class="btn btn-secondary">Clear History</button>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Current Analysis -->
+      <section id="currentAnalysis" class="analysis-section hidden">
+        <h2>Analysis Result</h2>
+        <div id="imagePreview" class="image-preview">
+          <img id="previewImg" src="" alt="Preview">
+        </div>
+
+        <!-- View Toggle -->
+        <div class="view-toggle">
+          <button class="view-btn active" data-view="json">JSON</button>
+          <button class="view-btn" data-view="natural">Natural Language</button>
+        </div>
+
+        <!-- Prompt Display -->
+        <div id="jsonView" class="prompt-view">
+          <div class="prompt-header">
+            <span>Structured Prompt</span>
+            <button class="copy-btn" data-target="jsonPrompt">📋 Copy</button>
+          </div>
+          <pre id="jsonPrompt" class="prompt-content"></pre>
+        </div>
+
+        <div id="naturalView" class="prompt-view hidden">
+          <div class="prompt-header">
+            <span>Natural Language</span>
+            <button class="copy-btn" data-target="naturalPrompt">📋 Copy</button>
+          </div>
+          <div id="naturalPrompt" class="prompt-content text-content"></div>
+        </div>
+      </section>
+
+      <!-- Loading State -->
+      <section id="loadingState" class="loading-section hidden">
+        <div class="spinner"></div>
+        <p>Analyzing image...</p>
+      </section>
+
+      <!-- Empty State -->
+      <section id="emptyState" class="empty-section">
+        <div class="empty-icon">🖼️</div>
+        <h3>Hover over an image</h3>
+        <p>Click "Analyze Image" on any web image to generate its reverse prompt</p>
+      </section>
+
+      <!-- Error State -->
+      <section id="errorState" class="error-section hidden">
+        <div class="error-icon">❌</div>
+        <h3>Analysis Failed</h3>
+        <p id="errorMessage">Something went wrong</p>
+      </section>
+
+      <!-- History Section -->
+      <section id="historySection" class="history-section hidden">
+        <h2>Recent History</h2>
+        <div id="historyList" class="history-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="sidebar.js"></script>
+</body>
+</html>
