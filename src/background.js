@@ -1,6 +1,16 @@
 // Background Service Worker
 
-importScripts('lib/doubao-api.js', 'lib/utils.js');
+importScripts('lib/utils.js', 'lib/supabase-client.js', 'lib/api-client.js');
+
+// Default vision config — only used for display in settings panel
+// Actual default analysis goes through Supabase Edge Function (no client-side key)
+const DEFAULT_CONFIG = {
+  protocol: 'openai',
+  baseUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
+  apiKey: '',
+  model: 'mimo-v2.5',
+  isDefault: true
+};
 
 // Store for pending analysis
 let currentAnalysis = null;
@@ -23,11 +33,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'analyzeImage':
       handleAnalyzeImage(message, sendResponse);
       return true; // Keep port open for async response
-    case 'saveApiKey':
-      handleSaveApiKey(message.apiKey, sendResponse);
+    case 'saveApiConfig':
+      handleSaveApiConfig(message.config, sendResponse);
       return true;
-    case 'getApiKey':
-      handleGetApiKey(sendResponse);
+    case 'getApiConfig':
+      handleGetApiConfig(sendResponse);
       return true;
     case 'getHistory':
       handleGetHistory(sendResponse);
@@ -50,16 +60,11 @@ async function handleAnalyzeImage(message, sendResponse) {
   try {
     const { imageUrl } = message;
 
-    // Get API key
-    const result = await chrome.storage.local.get('doubaoApiKey');
-    if (!result.doubaoApiKey) {
-      sendToSidebar({
-        action: 'analysisError',
-        error: 'Please set your Doubao API key first'
-      });
-      sendResponse({ success: false, error: 'No API key' });
-      return;
-    }
+    // Get API configuration
+    const result = await chrome.storage.local.get('apiConfig');
+    const userConfig = result.apiConfig;
+    const usingDefault = !userConfig || !userConfig.apiKey;
+    const config = usingDefault ? DEFAULT_CONFIG : userConfig;
 
     // Notify sidebar analysis is starting
     sendToSidebar({
@@ -70,15 +75,16 @@ async function handleAnalyzeImage(message, sendResponse) {
     // Fetch and convert image to base64
     const imageBase64 = await fetchImageAsBase64(imageUrl);
 
-    // Call Doubao API
-    const analysis = await analyzeImageWithDoubao(imageBase64, result.doubaoApiKey);
+    // Call AI analysis + retrieve similar prompts
+    const { analysis, similarPrompts } = await analyzeAndRetrieve(imageBase64, config, usingDefault);
 
     // Save to history
     const historyItem = {
       id: Date.now(),
       imageUrl: imageUrl,
       timestamp: new Date().toISOString(),
-      analysis: analysis
+      analysis: analysis,
+      similarPrompts: similarPrompts
     };
 
     analysisHistory.unshift(historyItem);
@@ -89,10 +95,11 @@ async function handleAnalyzeImage(message, sendResponse) {
     sendToSidebar({
       action: 'analysisComplete',
       result: analysis,
+      similarPrompts: similarPrompts,
       historyItem: historyItem
     });
 
-    sendResponse({ success: true, analysis });
+    sendResponse({ success: true, analysis, similarPrompts });
 
   } catch (error) {
     console.error('Analysis error:', error);
@@ -104,21 +111,21 @@ async function handleAnalyzeImage(message, sendResponse) {
   }
 }
 
-// Save API key
-async function handleSaveApiKey(apiKey, sendResponse) {
+// Save API configuration
+async function handleSaveApiConfig(config, sendResponse) {
   try {
-    await chrome.storage.local.set({ doubaoApiKey: apiKey });
+    await chrome.storage.local.set({ apiConfig: config });
     sendResponse({ success: true });
   } catch (error) {
     sendResponse({ success: false, error: error.message });
   }
 }
 
-// Get API key
-async function handleGetApiKey(sendResponse) {
+// Get API configuration
+async function handleGetApiConfig(sendResponse) {
   try {
-    const result = await chrome.storage.local.get('doubaoApiKey');
-    sendResponse({ success: true, apiKey: result.doubaoApiKey || '' });
+    const result = await chrome.storage.local.get('apiConfig');
+    sendResponse({ success: true, config: result.apiConfig || DEFAULT_CONFIG });
   } catch (error) {
     sendResponse({ success: false, error: error.message });
   }

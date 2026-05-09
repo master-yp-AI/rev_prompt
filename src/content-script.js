@@ -1,42 +1,96 @@
 // Content Script - Injected into web pages
 
-let activeOverlay = null;
+let activeButton = null;
+let activeImg = null;
+let hideTimer = null;
 
-// Create analyze overlay for images
-function createOverlay(img) {
-  const overlay = document.createElement('div');
-  overlay.className = 'rev-prompt-overlay';
-  overlay.innerHTML = '<div class="rev-prompt-button">Analyze Image</div>';
+// Create small floating analyze button — positioned on body, anchored to image
+function showButton(img) {
+  removeButton();
 
-  const rect = img.getBoundingClientRect();
-  overlay.style.position = 'absolute';
-  overlay.style.top = `${rect.top + window.scrollY}px`;
-  overlay.style.left = `${rect.left + window.scrollX}px`;
-  overlay.style.width = `${rect.width}px`;
-  overlay.style.height = `${rect.height}px`;
-  overlay.style.zIndex = '999999';
-  overlay.style.display = 'flex';
-  overlay.style.alignItems = 'center';
-  overlay.style.justifyContent = 'center';
-  overlay.style.background = 'rgba(0, 0, 0, 0.5)';
-  overlay.style.borderRadius = '4px';
-  overlay.style.cursor = 'pointer';
-  overlay.style.transition = 'opacity 0.2s';
+  const btn = document.createElement('div');
+  btn.className = 'rev-prompt-btn';
+  btn.textContent = '破解prompt';
 
-  overlay.addEventListener('click', (e) => {
+  function position() {
+    const rect = img.getBoundingClientRect();
+    btn.style.top = `${rect.bottom + window.scrollY - 32}px`;
+    btn.style.left = `${rect.right + window.scrollX - 68}px`;
+  }
+
+  btn.style.cssText = `
+    position: absolute;
+    z-index: 999999;
+    padding: 5px 12px;
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(16px) saturate(1.8);
+    -webkit-backdrop-filter: blur(16px) saturate(1.8);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease;
+    pointer-events: auto;
+    user-select: none;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  `;
+
+  position();
+  document.body.appendChild(btn);
+  requestAnimationFrame(() => { btn.style.opacity = '1'; });
+
+  // Reposition on scroll/resize
+  const reposition = () => position();
+  window.addEventListener('scroll', reposition, { passive: true });
+  window.addEventListener('resize', reposition, { passive: true });
+
+  btn.addEventListener('click', (e) => {
     e.stopPropagation();
+    e.preventDefault();
     analyzeImage(img);
-    removeOverlay();
+    removeButton();
   });
 
-  document.body.appendChild(overlay);
-  return overlay;
+  // When mouse enters button, cancel pending hide
+  btn.addEventListener('mouseenter', () => {
+    clearTimeout(hideTimer);
+  });
+
+  // When mouse leaves button, schedule hide
+  btn.addEventListener('mouseleave', () => {
+    scheduleHide();
+  });
+
+  activeButton = btn;
+  activeImg = img;
+  btn._reposition = reposition;
 }
 
-function removeOverlay() {
-  if (activeOverlay) {
-    activeOverlay.remove();
-    activeOverlay = null;
+function scheduleHide() {
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => {
+    // Only hide if mouse is not on button AND not on image
+    if (activeButton && !activeButton.matches(':hover') && activeImg && !activeImg.matches(':hover')) {
+      removeButton();
+    }
+  }, 400);
+}
+
+function removeButton() {
+  clearTimeout(hideTimer);
+  if (activeButton) {
+    if (activeButton._reposition) {
+      window.removeEventListener('scroll', activeButton._reposition);
+      window.removeEventListener('resize', activeButton._reposition);
+    }
+    activeButton.remove();
+    activeButton = null;
+    activeImg = null;
   }
 }
 
@@ -55,21 +109,12 @@ function getImageUrl(img) {
 }
 
 // Analyze the image
-async function analyzeImage(img) {
+function analyzeImage(img) {
   const imageUrl = getImageUrl(img);
 
-  try {
-    // Open sidebar
-    chrome.runtime.sendMessage({ action: 'openSidebar' });
-
-    // Send image for analysis
-    chrome.runtime.sendMessage({
-      action: 'analyzeImage',
-      imageUrl: imageUrl
-    });
-  } catch (error) {
-    console.error('Error analyzing image:', error);
-  }
+  // Open sidebar first, then trigger analysis
+  chrome.runtime.sendMessage({ action: 'openSidebar' });
+  chrome.runtime.sendMessage({ action: 'analyzeImage', imageUrl: imageUrl });
 }
 
 // Add hover listeners to images
@@ -82,16 +127,11 @@ function setupImageListeners() {
 
     img.addEventListener('mouseenter', () => {
       if (img.naturalWidth < 50 || img.naturalHeight < 50) return;
-      removeOverlay();
-      activeOverlay = createOverlay(img);
+      showButton(img);
     });
 
     img.addEventListener('mouseleave', () => {
-      setTimeout(() => {
-        if (activeOverlay && !activeOverlay.matches(':hover')) {
-          removeOverlay();
-        }
-      }, 100);
+      scheduleHide();
     });
   });
 }

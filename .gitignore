@@ -20,3 +20,7 @@ build/
 # Environment
 .env
 .env.local
+
+# Build artifacts
+*.zip
+reprompt-*/
