@@ -3,26 +3,56 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reverse Prompt Generator</title>
+  <title>RePrompt</title>
   <link rel="stylesheet" href="sidebar.css">
 </head>
 <body>
   <div class="container">
     <!-- Header -->
     <header class="header">
-      <h1>Reverse Prompt</h1>
-      <button id="settingsBtn" class="icon-btn" title="Settings">⚙️</button>
+      <div class="header-left">
+        <div class="header-icon"><img src="../../icons/icon48.png" alt="RP"></div>
+        <div class="header-title">
+          <h1>RePrompt</h1>
+          <span class="header-slogan">图生prompt</span>
+        </div>
+      </div>
+      <button id="settingsBtn" class="icon-btn" title="Settings">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+      </button>
     </header>
 
     <!-- Settings Panel -->
-    <div id="settingsPanel" class="settings-panel hidden">
+    <div id="settingsPanel" class="settings-panel collapsed">
       <div class="settings-section">
-        <label for="apiKeyInput">Doubao API Key</label>
-        <input type="password" id="apiKeyInput" placeholder="Enter your API key...">
-        <button id="saveApiKeyBtn" class="btn btn-primary">Save API Key</button>
+        <label for="protocolSelect">Protocol</label>
+        <select id="protocolSelect" class="settings-select">
+          <option value="openai">OpenAI Compatible</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+        </select>
       </div>
       <div class="settings-section">
-        <button id="clearHistoryBtn" class="btn btn-secondary">Clear History</button>
+        <label for="baseUrlInput">Base URL</label>
+        <input type="text" id="baseUrlInput" placeholder="https://api.openai.com/v1">
+      </div>
+      <div class="settings-section">
+        <label for="modelInput">Model Name</label>
+        <input type="text" id="modelInput" list="modelList" placeholder="gpt-5.4">
+        <datalist id="modelList">
+          <option value="gpt-5.4">GPT-5.4</option>
+          <option value="claude-opus-4.7">Claude Opus 4.7</option>
+          <option value="claude-opus-4.6">Claude Opus 4.6</option>
+        </datalist>
+      </div>
+      <div class="settings-section">
+        <label for="apiKeyInput">API Key</label>
+        <input type="password" id="apiKeyInput" placeholder="sk-...">
+      </div>
+      <div class="settings-section">
+        <button id="saveConfigBtn" class="btn btn-primary">Save Configuration</button>
       </div>
     </div>
 
@@ -30,9 +60,15 @@
     <main class="main-content">
       <!-- Current Analysis -->
       <section id="currentAnalysis" class="analysis-section hidden">
-        <h2>Analysis Result</h2>
+        <div class="section-label">Analysis Result</div>
         <div id="imagePreview" class="image-preview">
           <img id="previewImg" src="" alt="Preview">
+        </div>
+
+        <!-- Scene & Tags -->
+        <div class="result-meta">
+          <p id="sceneText" class="result-scene"></p>
+          <div id="tagsContainer" class="result-tags hidden"></div>
         </div>
 
         <!-- View Toggle -->
@@ -41,21 +77,39 @@
           <button class="view-btn" data-view="natural">Natural Language</button>
         </div>
 
-        <!-- Prompt Display -->
-        <div id="jsonView" class="prompt-view">
-          <div class="prompt-header">
+        <!-- JSON Prompt -->
+        <div id="jsonView" class="json-view">
+          <div class="json-header">
             <span>Structured Prompt</span>
             <button class="copy-btn" data-target="jsonPrompt">📋 Copy</button>
           </div>
-          <pre id="jsonPrompt" class="prompt-content"></pre>
+          <pre id="jsonPrompt"></pre>
         </div>
 
+        <!-- Natural Language Prompt -->
         <div id="naturalView" class="prompt-view hidden">
           <div class="prompt-header">
             <span>Natural Language</span>
             <button class="copy-btn" data-target="naturalPrompt">📋 Copy</button>
           </div>
-          <div id="naturalPrompt" class="prompt-content text-content"></div>
+          <div id="naturalPrompt" class="natural-view"></div>
+        </div>
+
+        <!-- Similar Prompts Section -->
+        <div id="similarPromptsSection" class="similar-prompts-section hidden">
+          <div class="similar-prompts-header">
+            <span>Similar Prompts</span>
+            <span id="similarCount" class="similar-count"></span>
+          </div>
+          <div id="similarPromptsList" class="similar-prompts-list"></div>
+          <div id="similarPromptsEmpty" class="similar-prompts-empty hidden">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              <line x1="8" y1="11" x2="14" y2="11"/>
+            </svg>
+            <span>暂无相似提示词</span>
+          </div>
         </div>
       </section>
 
@@ -67,21 +121,36 @@
 
       <!-- Empty State -->
       <section id="emptyState" class="empty-section">
-        <div class="empty-icon">🖼️</div>
-        <h3>Hover over an image</h3>
-        <p>Click "Analyze Image" on any web image to generate its reverse prompt</p>
+        <div class="empty-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="3"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <path d="M21 15l-5-5L5 21"/>
+          </svg>
+        </div>
+        <h3>将鼠标悬停在图片上</h3>
+        <p>点击浮层上的「分析图片」，即可一键生成提示词</p>
       </section>
 
       <!-- Error State -->
       <section id="errorState" class="error-section hidden">
-        <div class="error-icon">❌</div>
+        <div class="error-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+            <line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+        </div>
         <h3>Analysis Failed</h3>
         <p id="errorMessage">Something went wrong</p>
       </section>
 
       <!-- History Section -->
       <section id="historySection" class="history-section hidden">
-        <h2>Recent History</h2>
+        <div class="history-header">
+          <span>Recent History</span>
+          <button id="clearHistoryBtn" class="history-clear-btn">Clear</button>
+        </div>
         <div id="historyList" class="history-list"></div>
       </section>
     </main>

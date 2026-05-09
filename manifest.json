@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Reverse Prompt Generator",
+  "name": "RePrompt",
   "version": "1.0.0",
-  "description": "Analyze images and generate reverse prompts using Doubao AI",
+  "description": "Analyze images and generate reverse prompts using AI",
   "permissions": [
     "sidePanel",
     "storage",
@@ -30,6 +30,6 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Toggle Reverse Prompt Sidebar"
+    "default_title": "Toggle RePrompt Sidebar"
   }
 }

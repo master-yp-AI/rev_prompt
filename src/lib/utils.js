@@ -4,15 +4,18 @@
 async function fetchImageAsBase64(imageUrl) {
   try {
     const response = await fetch(imageUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+    }
     const blob = await response.blob();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64 = reader.result.split(',')[1];
-        const mimeType = blob.type;
+        const mimeType = blob.type || 'image/jpeg';
         resolve({ base64, mimeType });
       };
-      reader.onerror = reject;
+      reader.onerror = () => reject(new Error('FileReader failed to read the blob'));
       reader.readAsDataURL(blob);
     });
   } catch (error) {
@@ -27,16 +30,20 @@ function convertImageToBase64ViaCanvas(imageUrl) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      const base64 = dataUrl.split(',')[1];
-      resolve({ base64, mimeType: 'image/jpeg' });
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const base64 = dataUrl.split(',')[1];
+        resolve({ base64, mimeType: 'image/jpeg' });
+      } catch (error) {
+        reject(new Error(`Canvas conversion failed: ${error.message}`));
+      }
     };
-    img.onerror = reject;
+    img.onerror = () => reject(new Error(`Failed to load image via canvas: ${imageUrl}`));
     img.src = imageUrl;
   });
 }

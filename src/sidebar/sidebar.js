@@ -2,12 +2,16 @@
 
 let currentResult = null;
 let currentView = 'json';
+let currentSimilarPrompts = [];
 
 // DOM Elements
 const settingsBtn = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
+const protocolSelect = document.getElementById('protocolSelect');
+const baseUrlInput = document.getElementById('baseUrlInput');
+const modelInput = document.getElementById('modelInput');
 const apiKeyInput = document.getElementById('apiKeyInput');
-const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
+const saveConfigBtn = document.getElementById('saveConfigBtn');
 const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 
 const currentAnalysis = document.getElementById('currentAnalysis');
@@ -33,13 +37,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Setup event listeners
 function setupEventListeners() {
-  // Settings toggle
+  // Settings toggle with fade
   settingsBtn.addEventListener('click', () => {
-    settingsPanel.classList.toggle('hidden');
+    toggleSettingsPanel();
   });
 
-  // API Key save
-  saveApiKeyBtn.addEventListener('click', saveApiKey);
+  // Protocol change - update placeholders
+  protocolSelect.addEventListener('change', updatePlaceholders);
+
+  // Save configuration
+  saveConfigBtn.addEventListener('click', saveApiConfig);
 
   // Clear history
   clearHistoryBtn.addEventListener('click', clearHistory);
@@ -59,42 +66,98 @@ function setupEventListeners() {
   });
 }
 
-// Load API Key
-async function loadApiKey() {
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'getApiKey' });
-    if (response.success && response.apiKey) {
-      apiKeyInput.value = response.apiKey;
-    }
-  } catch (e) {
-    console.log('Could not load API key');
+// Update input placeholders based on selected protocol
+function updatePlaceholders() {
+  const protocol = protocolSelect.value;
+  if (protocol === 'openai') {
+    baseUrlInput.placeholder = 'https://api.openai.com/v1';
+    modelInput.placeholder = 'gpt-5.4';
+  } else if (protocol === 'anthropic') {
+    baseUrlInput.placeholder = 'https://api.anthropic.com';
+    modelInput.placeholder = 'claude-opus-4.7';
   }
 }
 
-// Save API Key
-async function saveApiKey() {
-  const apiKey = apiKeyInput.value.trim();
-  if (!apiKey) {
-    alert('Please enter an API key');
+// Settings panel fade toggle
+function toggleSettingsPanel() {
+  if (settingsPanel.classList.contains('collapsed')) {
+    settingsPanel.classList.remove('collapsed');
+  } else {
+    settingsPanel.addEventListener('transitionend', function handler() {
+      settingsPanel.removeEventListener('transitionend', handler);
+    });
+    settingsPanel.classList.add('collapsed');
+  }
+}
+
+// Load API Configuration
+async function loadApiKey() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: 'getApiConfig' });
+    if (response.success && response.config) {
+      const config = response.config;
+      protocolSelect.value = config.protocol || 'openai';
+      baseUrlInput.value = config.baseUrl || '';
+      modelInput.value = config.model || '';
+      apiKeyInput.value = config.apiKey || '';
+      updatePlaceholders();
+    }
+  } catch (e) {
+    console.log('Could not load API config');
+    updatePlaceholders();
+  }
+}
+
+// Save API Configuration
+async function saveApiConfig() {
+  const config = {
+    protocol: protocolSelect.value,
+    baseUrl: baseUrlInput.value.trim(),
+    model: modelInput.value.trim(),
+    apiKey: apiKeyInput.value.trim()
+  };
+
+  // API key 为空时清除自定义配置，回退到默认
+  if (!config.apiKey) {
+    try {
+      await chrome.runtime.sendMessage({ action: 'saveApiConfig', config: null });
+      saveConfigBtn.textContent = '已恢复默认';
+      setTimeout(() => {
+        saveConfigBtn.textContent = 'Save Configuration';
+        toggleSettingsPanel();
+      }, 800);
+    } catch (e) {
+      alert('操作失败');
+    }
+    return;
+  }
+
+  if (!config.baseUrl) {
+    alert('Please enter a Base URL');
+    return;
+  }
+  if (!config.model) {
+    alert('Please enter a Model Name');
     return;
   }
 
   try {
     const response = await chrome.runtime.sendMessage({
-      action: 'saveApiKey',
-      apiKey: apiKey
+      action: 'saveApiConfig',
+      config: config
     });
 
     if (response.success) {
-      saveApiKeyBtn.textContent = 'Saved!';
-      saveApiKeyBtn.style.background = 'linear-gradient(135deg, #64c864 0%, #4a9f4a 100%)';
+      saveConfigBtn.textContent = 'Saved!';
+      saveConfigBtn.style.background = 'linear-gradient(135deg, #64c864 0%, #4a9f4a 100%)';
       setTimeout(() => {
-        saveApiKeyBtn.textContent = 'Save API Key';
-        saveApiKeyBtn.style.background = '';
-      }, 2000);
+        saveConfigBtn.textContent = 'Save Configuration';
+        saveConfigBtn.style.background = '';
+        toggleSettingsPanel();
+      }, 800);
     }
   } catch (e) {
-    alert('Failed to save API key');
+    alert('Failed to save configuration');
   }
 }
 
@@ -114,7 +177,7 @@ async function loadHistory() {
 // Render history
 function renderHistory(history) {
   historyList.innerHTML = history.map(item => `
-    <div class="history-item" data-id="${item.id}">
+    <div class="history-item" data-id="${item.id}" data-analysis='${JSON.stringify(item.analysis).replace(/'/g, "&#39;")}' data-image-url="${item.imageUrl}">
       <img src="${item.imageUrl}" alt="" onerror="this.style.display='none'">
       <div class="history-item-content">
         <p>${truncateText(item.analysis?.natural_language_prompt || 'No prompt', 80)}</p>
@@ -126,11 +189,9 @@ function renderHistory(history) {
   // Add click handlers
   document.querySelectorAll('.history-item').forEach(item => {
     item.addEventListener('click', () => {
-      const id = parseInt(item.dataset.id);
-      const historyItem = history.find(h => h.id === id);
-      if (historyItem) {
-        showResult(historyItem.analysis, historyItem.imageUrl);
-      }
+      const analysis = JSON.parse(item.dataset.analysis);
+      const imageUrl = item.dataset.imageUrl;
+      showResult(analysis, imageUrl);
     });
   });
 }
@@ -167,8 +228,8 @@ function switchView(view) {
 // Copy prompt
 async function copyPrompt(target) {
   let text = '';
-  if (target === 'jsonPrompt' && currentResult?.json_prompt) {
-    text = JSON.stringify(currentResult.json_prompt, null, 2);
+  if (target === 'jsonPrompt' && currentResult?.structured_prompt) {
+    text = JSON.stringify(currentResult.structured_prompt, null, 2);
   } else if (target === 'naturalPrompt' && currentResult?.natural_language_prompt) {
     text = currentResult.natural_language_prompt;
   }
@@ -200,8 +261,9 @@ function showLoading(imageUrl) {
 }
 
 // Show result
-function showResult(result, imageUrl) {
+function showResult(result, imageUrl, similarPrompts = []) {
   currentResult = result;
+  currentSimilarPrompts = similarPrompts;
   hideAllSections();
   currentAnalysis.classList.remove('hidden');
 
@@ -209,9 +271,22 @@ function showResult(result, imageUrl) {
     previewImg.src = imageUrl;
   }
 
-  // Display JSON prompt
-  if (result.json_prompt) {
-    jsonPrompt.textContent = JSON.stringify(result.json_prompt, null, 2);
+  // Display scene and tags
+  const sceneEl = document.getElementById('sceneText');
+  const tagsEl = document.getElementById('tagsContainer');
+  if (sceneEl) sceneEl.textContent = result.scene || '';
+  if (tagsEl) {
+    if (result.tags && result.tags.length > 0) {
+      tagsEl.innerHTML = result.tags.map(t => `<span class="result-tag">${t}</span>`).join('');
+      tagsEl.classList.remove('hidden');
+    } else {
+      tagsEl.classList.add('hidden');
+    }
+  }
+
+  // Display structured prompt
+  if (result.structured_prompt) {
+    jsonPrompt.textContent = JSON.stringify(result.structured_prompt, null, 2);
   } else {
     jsonPrompt.textContent = 'No structured prompt available';
   }
@@ -223,8 +298,110 @@ function showResult(result, imageUrl) {
     naturalPrompt.textContent = 'No natural language prompt available';
   }
 
+  // Display similar prompts
+  const similarSection = document.getElementById('similarPromptsSection');
+  const similarList = document.getElementById('similarPromptsList');
+  const similarEmpty = document.getElementById('similarPromptsEmpty');
+
+  similarSection.classList.remove('hidden');
+  if (similarPrompts && similarPrompts.length > 0) {
+    renderSimilarPrompts(similarPrompts);
+    document.getElementById('similarCount').textContent = `${similarPrompts.length} results`;
+    similarList.classList.remove('hidden');
+    similarEmpty.classList.add('hidden');
+  } else {
+    document.getElementById('similarCount').textContent = '0 results';
+    similarList.classList.add('hidden');
+    similarEmpty.classList.remove('hidden');
+  }
+
   // Refresh history
   loadHistory();
+}
+
+// Render similar prompts
+function renderSimilarPrompts(prompts) {
+  const list = document.getElementById('similarPromptsList');
+  list.innerHTML = prompts.map((p, i) => `
+    <div class="similar-prompt-item" data-index="${i}">
+      <div class="similar-prompt-title">
+        ${p.title || 'Untitled'}
+        <span class="similar-prompt-similarity">${Math.round(p.similarity * 100)}% match</span>
+      </div>
+      ${p.description ? `<div class="similar-prompt-desc">${truncateText(p.description, 120)}</div>` : ''}
+      ${p.tags && p.tags.length > 0 ? `
+        <div class="similar-prompt-tags">
+          ${p.tags.map(t => `<span class="similar-prompt-tag">${t}</span>`).join('')}
+        </div>
+      ` : ''}
+      <div class="similar-prompt-actions">
+        <button class="similar-prompt-expand" data-index="${i}">展开详情</button>
+        <button class="similar-prompt-copy" data-index="${i}">📋 Copy</button>
+      </div>
+      <div class="similar-prompt-detail" data-index="${i}">
+        <pre class="similar-prompt-detail-content">${escapeHtml(p.contentRaw || p.contentJson || '')}</pre>
+      </div>
+    </div>
+  `).join('');
+
+  // Copy buttons
+  list.querySelectorAll('.similar-prompt-copy').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copySimilarPrompt(parseInt(btn.dataset.index));
+    });
+  });
+
+  // Expand/collapse with fade animation
+  list.querySelectorAll('.similar-prompt-expand').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const item = btn.closest('.similar-prompt-item');
+      const detail = item.querySelector('.similar-prompt-detail');
+      const isExpanding = !detail.classList.contains('expanded');
+
+      // Collapse all other items
+      list.querySelectorAll('.similar-prompt-detail.expanded').forEach(d => {
+        if (d !== detail) {
+          d.classList.remove('expanded');
+          d.closest('.similar-prompt-item').querySelector('.similar-prompt-expand').textContent = '展开详情';
+        }
+      });
+
+      // Toggle current
+      detail.classList.toggle('expanded');
+      btn.textContent = isExpanding ? '收起' : '展开详情';
+    });
+  });
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Copy similar prompt
+async function copySimilarPrompt(index) {
+  const p = currentSimilarPrompts[index];
+  if (!p) return;
+
+  const text = p.contentJson || p.contentRaw;
+  if (!text) return;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    const btn = document.querySelector(`.similar-prompt-copy[data-index="${index}"]`);
+    const originalText = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.classList.remove('copied');
+    }, 2000);
+  } catch {
+    alert('Failed to copy');
+  }
 }
 
 // Show error
@@ -267,7 +444,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       showLoading(message.imageUrl);
       break;
     case 'analysisComplete':
-      showResult(message.result, message.imageUrl);
+      showResult(message.result, message.imageUrl, message.similarPrompts || []);
       break;
     case 'analysisError':
       showError(message.error);
